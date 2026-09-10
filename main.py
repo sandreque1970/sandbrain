@@ -26,12 +26,18 @@ async def pesquisar(payload: dict = Body(...)):
 
     resultados = []
     termo_lower = termo.lower()
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    
+    # Headers completos para evitar bloqueio do servidor na nuvem
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
 
     # 1. Cotação do Dólar
     if "dolar" in termo_lower or "dólar" in termo_lower:
         try:
-            async with httpx.AsyncClient(timeout=4.0, headers=headers) as client:
+            async with httpx.AsyncClient(timeout=8.0, headers=headers, follow_redirects=True) as client:
                 res = await client.get("https://economia.awesomeapi.com.br/last/USD-BRL")
                 if res.status_code == 200:
                     dados = res.json().get("USDBRL", {})
@@ -39,18 +45,18 @@ async def pesquisar(payload: dict = Body(...)):
                         "titulo": "💵 Cotação Comercial do Dólar (USD/BRL)",
                         "detalhe": f"Valor Atual: R$ {dados.get('bid', 'N/A')} | Máxima: R$ {dados.get('high', 'N/A')} | Mínima: R$ {dados.get('low', 'N/A')}"
                     })
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Erro ao buscar dólar: {e}")
 
-    # 2. Busca Wikipédia (com tratamento de singular/plural)
-    variacoes_termo = [termo]
+    # 2. Busca Wikipédia (com variações de termo e suporte a nuvem)
+    variacoes_termo = [termo, termo.capitalize(), termo.title()]
     if termo_lower.endswith("s") and len(termo) > 3:
-        variacoes_termo.append(termo[:-1])  # Exemplo: "Carros" -> "Carro"
+        variacoes_termo.append(termo[:-1])
 
     for t in variacoes_termo:
         termo_encoded = urllib.parse.quote(t.replace(" ", "_"))
         try:
-            async with httpx.AsyncClient(timeout=4.0, headers=headers) as client:
+            async with httpx.AsyncClient(timeout=8.0, headers=headers, follow_redirects=True) as client:
                 url_wiki = f"https://pt.wikipedia.org/api/rest_v1/page/summary/{termo_encoded}"
                 res_wiki = await client.get(url_wiki)
                 if res_wiki.status_code == 200:
@@ -61,36 +67,26 @@ async def pesquisar(payload: dict = Body(...)):
                             "detalhe": dados_wiki.get("extract")
                         })
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Erro na Wikipédia ({t}): {e}")
 
-    # 3. Busca DuckDuckGo (Resumos e Tópicos Gerais da Web)
-    if len(resultados) == 0 or (len(resultados) == 1 and ("dolar" in termo_lower or "dólar" in termo_lower)):
+    # 3. Busca de Contingência (Wikipédia Opensearch API)
+    if len(resultados) == 0:
         try:
-            async with httpx.AsyncClient(timeout=4.0, headers=headers) as client:
-                url_ddg = f"https://api.duckduckgo.com/?q={urllib.parse.quote(termo)}&format=json&no_redirect=1&no_html=1&kl=br-pt"
-                res_ddg = await client.get(url_ddg)
-                if res_ddg.status_code == 200:
-                    data_ddg = res_ddg.json()
-                    if data_ddg.get("AbstractText"):
+            async with httpx.AsyncClient(timeout=8.0, headers=headers, follow_redirects=True) as client:
+                url_search = f"https://pt.wikipedia.org/w/api.php?action=opensearch&search={urllib.parse.quote(termo)}&limit=1&namespace=0&format=json"
+                res_search = await client.get(url_search)
+                if res_search.status_code == 200:
+                    dados = res_search.json()
+                    if len(dados) >= 3 and len(dados[2]) > 0 and dados[2][0]:
                         resultados.append({
-                            "titulo": f"🔍 {data_ddg.get('Heading', termo)}",
-                            "detalhe": data_ddg.get("AbstractText")
+                            "titulo": f"🔍 {dados[1][0]}",
+                            "detalhe": dados[2][0]
                         })
-                    for topic in data_ddg.get("RelatedTopics", []):
-                        if isinstance(topic, dict) and topic.get("Text"):
-                            texto_topico = topic.get("Text")
-                            if not any(texto_topico in r["detalhe"] for r in resultados):
-                                resultados.append({
-                                    "titulo": f"Informação sobre '{termo}'",
-                                    "detalhe": texto_topico
-                                })
-                            if len(resultados) >= 3:
-                                break
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Erro na busca opensearch: {e}")
 
-    # 4. Fallback final caso nada seja localizado
+    # 4. Fallback final
     if len(resultados) == 0:
         resultados.append({
             "titulo": f"Pesquisa: '{termo}'",
