@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sandbrain Mobile</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: #0d1117; color: #c9d1d9; padding: 16px; display: flex; flex-direction: column; align-items: center; }
+        .app-card { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
+        h1 { color: #00ff41; font-size: 24px; text-align: center; font-weight: 700; margin-bottom: 4px; }
+        p.subtitle { text-align: center; font-size: 13px; color: #8b949e; margin-bottom: 8px; }
+        
+        .search-row { display: flex; gap: 8px; width: 100%; }
+        input[type="text"] { 
+            flex: 1; 
+            padding: 14px; 
+            border-radius: 8px; 
+            border: 1px solid #30363d; 
+            background: #161b22; 
+            color: #f0f6fc; 
+            font-size: 16px; 
+            outline: none;
+        }
+        input[type="text"]:focus { border-color: #00ff41; }
+        
+        button { 
+            padding: 14px; 
+            border: none; 
+            border-radius: 8px; 
+            font-weight: bold; 
+            font-size: 16px; 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+        }
+        .btn-submit { background: #00ff41; color: #000; padding-left: 20px; padding-right: 20px; }
+        .btn-mic { background: #21262d; color: #00ff41; border: 1px solid #30363d; font-size: 18px; width: 50px; }
+        .btn-mic.active { background: #da3633 !important; color: #ffffff !important; border-color: #f85149 !important; animation: pulse 1s infinite; }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        .status-msg { font-size: 12px; color: #8b949e; height: 16px; text-align: left; }
+        .results-box { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+        .result-item { background: #161b22; padding: 14px; border-radius: 8px; border-left: 4px solid #00ff41; border-top: 1px solid #30363d; border-right: 1px solid #30363d; border-bottom: 1px solid #30363d; }
+        .result-item h3 { font-size: 15px; color: #f0f6fc; margin-bottom: 4px; }
+        .result-item p { font-size: 13px; color: #8b949e; }
+    </style>
+</head>
+<body>
+    <div class="app-card">
+        <div>
+            <h1>🧠 Sandbrain</h1>
+            <p class="subtitle">Pesquisa operacional por escrita e voz</p>
+        </div>
+        
+        <div class="search-row">
+            <input type="text" id="campoPesquisa" placeholder="Digite ou fale..." autocomplete="off" />
+            <button id="btnVoz" class="btn-mic" title="Pesquisar por voz">🎙️</button>
+            <button id="btnPesquisar" class="btn-submit">OK</button>
+        </div>
+
+        <div id="statusVoz" class="status-msg"></div>
+        <div id="areaResultados" class="results-box"></div>
+    </div>
+
+    <script>
+        const campoInput = document.getElementById('campoPesquisa');
+        const btnVoz = document.getElementById('btnVoz');
+        const btnPesquisar = document.getElementById('btnPesquisar');
+        const areaResultados = document.getElementById('areaResultados');
+        const statusVoz = document.getElementById('statusVoz');
+
+        // Configuração de Reconhecimento de Voz (Entrada)
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'pt-BR';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            btnVoz.addEventListener('click', () => {
+                pararVoz(); // Cancela falas anteriores se houver
+                try {
+                    recognition.start();
+                } catch (e) {
+                    recognition.stop();
+                }
+            });
+
+            recognition.onstart = () => {
+                btnVoz.classList.add('active');
+                statusVoz.innerText = "Ouvindo... Pode falar.";
+            };
+
+            recognition.onresult = (e) => {
+                const textoTranscrevido = e.results[0][0].transcript;
+                campoInput.value = textoTranscrevido;
+                statusVoz.innerText = "";
+                executarPesquisa(textoTranscrevido);
+            };
+
+            recognition.onerror = (e) => {
+                btnVoz.classList.remove('active');
+                statusVoz.innerText = "Erro ao capturar voz: " + e.error;
+            };
+
+            recognition.onend = () => {
+                btnVoz.classList.remove('active');
+                if (statusVoz.innerText === "Ouvindo... Pode falar.") {
+                    statusVoz.innerText = "";
+                }
+            };
+        } else {
+            btnVoz.style.display = 'none';
+            statusVoz.innerText = "Navegador sem suporte à Web Speech API.";
+        }
+
+        btnPesquisar.addEventListener('click', () => {
+            pararVoz();
+            executarPesquisa(campoInput.value);
+        });
+
+        campoInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                pararVoz();
+                executarPesquisa(campoInput.value);
+            }
+        });
+
+        // Função de Fala (Saída por Áudio)
+        function falarTexto(texto) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); // Cancela áudios anteriores pendentes
+                const utterance = new SpeechSynthesisUtterance(texto);
+                utterance.lang = 'pt-BR';
+                utterance.rate = 1.0;  // Velocidade da fala
+                utterance.pitch = 1.0; // Tom da voz
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function pararVoz() {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+        }
+
+        // Requisição para a API do Sandbrain
+        async function executarPesquisa(termo) {
+            if (!termo.trim()) return;
+
+            areaResultados.innerHTML = `<p style="color:#8b949e; font-size:14px;">Buscando dados para <b>"${termo}"</b>...</p>`;
+
+            try {
+                const response = await fetch('/api/pesquisar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ termo: termo })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'sucesso' && data.resultados.length > 0) {
+                    let html = '';
+                    let textoParaFalar = '';
+
+                    data.resultados.forEach((item, index) => {
+                        html += `
+                            <div class="result-item">
+                                <h3>${item.titulo}</h3>
+                                <p>${item.detalhe}</p>
+                            </div>
+                        `;
+                        // Monta o texto que o assistente vai sintetizar em áudio (lê o primeiro/principal resultado)
+                        if (index === 0) {
+                            textoParaFalar = `${item.titulo}. ${item.detalhe}`;
+                        }
+                    });
+
+                    areaResultados.innerHTML = html;
+
+                    // Executa a resposta falada
+                    if (textoParaFalar) {
+                        falarTexto(textoParaFalar);
+                    }
+                } else {
+                    const msgErro = `Nenhum registro encontrado para ${termo}.`;
+                    areaResultados.innerHTML = `<p style="color:#da3633; font-size:14px;">${msgErro}</p>`;
+                    falarTexto(msgErro);
+                }
+            } catch (err) {
+                const msgFalha = "Erro de conexão com o servidor do Sandbrain.";
+                areaResultados.innerHTML = `<p style="color:#da3633; font-size:14px;">${msgFalha}</p>`;
+                falarTexto(msgFalha);
+            }
+        }
+    </script>
+</body>
+</html>
