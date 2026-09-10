@@ -28,8 +28,9 @@ async def pesquisar(payload: dict = Body(...)):
     resultados = []
     termo_lower = termo.lower()
     
+    # User-Agent no padrão oficial exigido pela API da Wikipédia para evitar erro 403
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        "User-Agent": "SandbrainApp/1.0 (https://github.com/sandreque1970/sandbrain; sandreque1970@gmail.com)"
     }
 
     # 1. Cotação do Dólar
@@ -46,12 +47,12 @@ async def pesquisar(payload: dict = Body(...)):
         except Exception as e:
             print(f"Erro no Dólar: {e}")
 
-    # 2. Busca Wikipédia (Formatando Primeira Letra Maiúscula)
+    # 2. Busca Wikipédia (Rest API Summary)
     termo_wiki = termo.capitalize()
     termo_encoded = urllib.parse.quote(termo_wiki.replace(" ", "_"))
     
     try:
-        async with httpx.AsyncClient(timeout=5.0, headers=headers, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=6.0, headers=headers, follow_redirects=True) as client:
             url_wiki = f"https://pt.wikipedia.org/api/rest_v1/page/summary/{termo_encoded}"
             res_wiki = await client.get(url_wiki)
             print(f"Status Wikipédia: {res_wiki.status_code}")
@@ -66,34 +67,23 @@ async def pesquisar(payload: dict = Body(...)):
     except Exception as e:
         print(f"Erro na Wikipédia: {e}")
 
-    # 3. DuckDuckGo Instant Answer API (Fallback Geral)
+    # 3. Busca de Contingência na Wikipédia (Opensearch API)
     if len(resultados) == 0:
         try:
-            async with httpx.AsyncClient(timeout=5.0, headers=headers) as client:
-                url_ddg = f"https://api.duckduckgo.com/?q={urllib.parse.quote(termo)}&format=json&no_html=1&kl=br-pt"
-                res_ddg = await client.get(url_ddg)
-                print(f"Status DuckDuckGo: {res_ddg.status_code}")
+            async with httpx.AsyncClient(timeout=6.0, headers=headers) as client:
+                url_opensearch = f"https://pt.wikipedia.org/w/api.php?action=opensearch&search={urllib.parse.quote(termo)}&limit=1&namespace=0&format=json"
+                res_open = await client.get(url_opensearch)
+                print(f"Status Opensearch: {res_open.status_code}")
                 
-                if res_ddg.status_code == 200:
-                    dados_ddg = res_ddg.json()
-                    abstract = dados_ddg.get("AbstractText")
-                    if abstract:
+                if res_open.status_code == 200:
+                    dados = res_open.json()
+                    if len(dados) >= 3 and len(dados[2]) > 0 and dados[2][0]:
                         resultados.append({
-                            "titulo": f"🔍 {dados_ddg.get('Heading', termo)}",
-                            "detalhe": abstract
+                            "titulo": f"📖 Wikipédia: {dados[1][0]}",
+                            "detalhe": dados[2][0]
                         })
-                    else:
-                        # Tenta pegar dos tópicos relacionados
-                        topics = dados_ddg.get("RelatedTopics", [])
-                        for topic in topics:
-                            if isinstance(topic, dict) and topic.get("Text"):
-                                resultados.append({
-                                    "titulo": f"🔍 Resumo: {termo}",
-                                    "detalhe": topic.get("Text")
-                                })
-                                break
         except Exception as e:
-            print(f"Erro no DuckDuckGo: {e}")
+            print(f"Erro na Opensearch: {e}")
 
     # 4. Fallback final
     if len(resultados) == 0:
