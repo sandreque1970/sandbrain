@@ -20,6 +20,7 @@ async def home():
 @app.post("/api/pesquisar")
 async def pesquisar(payload: dict = Body(...)):
     termo = payload.get("termo", "").strip()
+    print(f"=== NOVA PESQUISA RECEBIDA: {termo} ===")
     
     if not termo:
         return JSONResponse(status_code=400, content={"status": "erro", "mensagem": "Termo de pesquisa vazio."})
@@ -27,17 +28,14 @@ async def pesquisar(payload: dict = Body(...)):
     resultados = []
     termo_lower = termo.lower()
     
-    # Headers completos para evitar bloqueio do servidor na nuvem
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
 
     # 1. Cotação do Dólar
     if "dolar" in termo_lower or "dólar" in termo_lower:
         try:
-            async with httpx.AsyncClient(timeout=8.0, headers=headers, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=5.0, headers=headers) as client:
                 res = await client.get("https://economia.awesomeapi.com.br/last/USD-BRL")
                 if res.status_code == 200:
                     dados = res.json().get("USDBRL", {})
@@ -46,45 +44,56 @@ async def pesquisar(payload: dict = Body(...)):
                         "detalhe": f"Valor Atual: R$ {dados.get('bid', 'N/A')} | Máxima: R$ {dados.get('high', 'N/A')} | Mínima: R$ {dados.get('low', 'N/A')}"
                     })
         except Exception as e:
-            print(f"Erro ao buscar dólar: {e}")
+            print(f"Erro no Dólar: {e}")
 
-    # 2. Busca Wikipédia (com variações de termo e suporte a nuvem)
-    variacoes_termo = [termo, termo.capitalize(), termo.title()]
-    if termo_lower.endswith("s") and len(termo) > 3:
-        variacoes_termo.append(termo[:-1])
+    # 2. Busca Wikipédia (Formatando Primeira Letra Maiúscula)
+    termo_wiki = termo.capitalize()
+    termo_encoded = urllib.parse.quote(termo_wiki.replace(" ", "_"))
+    
+    try:
+        async with httpx.AsyncClient(timeout=5.0, headers=headers, follow_redirects=True) as client:
+            url_wiki = f"https://pt.wikipedia.org/api/rest_v1/page/summary/{termo_encoded}"
+            res_wiki = await client.get(url_wiki)
+            print(f"Status Wikipédia: {res_wiki.status_code}")
+            
+            if res_wiki.status_code == 200:
+                dados_wiki = res_wiki.json()
+                if dados_wiki.get("extract") and dados_wiki.get("type") != "disambiguation":
+                    resultados.append({
+                        "titulo": f"📖 Wikipédia: {dados_wiki.get('title', termo)}",
+                        "detalhe": dados_wiki.get("extract")
+                    })
+    except Exception as e:
+        print(f"Erro na Wikipédia: {e}")
 
-    for t in variacoes_termo:
-        termo_encoded = urllib.parse.quote(t.replace(" ", "_"))
-        try:
-            async with httpx.AsyncClient(timeout=8.0, headers=headers, follow_redirects=True) as client:
-                url_wiki = f"https://pt.wikipedia.org/api/rest_v1/page/summary/{termo_encoded}"
-                res_wiki = await client.get(url_wiki)
-                if res_wiki.status_code == 200:
-                    dados_wiki = res_wiki.json()
-                    if dados_wiki.get("extract") and dados_wiki.get("type") != "disambiguation":
-                        resultados.append({
-                            "titulo": f"📖 {dados_wiki.get('title', t)}",
-                            "detalhe": dados_wiki.get("extract")
-                        })
-                        break
-        except Exception as e:
-            print(f"Erro na Wikipédia ({t}): {e}")
-
-    # 3. Busca de Contingência (Wikipédia Opensearch API)
+    # 3. DuckDuckGo Instant Answer API (Fallback Geral)
     if len(resultados) == 0:
         try:
-            async with httpx.AsyncClient(timeout=8.0, headers=headers, follow_redirects=True) as client:
-                url_search = f"https://pt.wikipedia.org/w/api.php?action=opensearch&search={urllib.parse.quote(termo)}&limit=1&namespace=0&format=json"
-                res_search = await client.get(url_search)
-                if res_search.status_code == 200:
-                    dados = res_search.json()
-                    if len(dados) >= 3 and len(dados[2]) > 0 and dados[2][0]:
+            async with httpx.AsyncClient(timeout=5.0, headers=headers) as client:
+                url_ddg = f"https://api.duckduckgo.com/?q={urllib.parse.quote(termo)}&format=json&no_html=1&kl=br-pt"
+                res_ddg = await client.get(url_ddg)
+                print(f"Status DuckDuckGo: {res_ddg.status_code}")
+                
+                if res_ddg.status_code == 200:
+                    dados_ddg = res_ddg.json()
+                    abstract = dados_ddg.get("AbstractText")
+                    if abstract:
                         resultados.append({
-                            "titulo": f"🔍 {dados[1][0]}",
-                            "detalhe": dados[2][0]
+                            "titulo": f"🔍 {dados_ddg.get('Heading', termo)}",
+                            "detalhe": abstract
                         })
+                    else:
+                        # Tenta pegar dos tópicos relacionados
+                        topics = dados_ddg.get("RelatedTopics", [])
+                        for topic in topics:
+                            if isinstance(topic, dict) and topic.get("Text"):
+                                resultados.append({
+                                    "titulo": f"🔍 Resumo: {termo}",
+                                    "detalhe": topic.get("Text")
+                                })
+                                break
         except Exception as e:
-            print(f"Erro na busca opensearch: {e}")
+            print(f"Erro no DuckDuckGo: {e}")
 
     # 4. Fallback final
     if len(resultados) == 0:
@@ -92,6 +101,8 @@ async def pesquisar(payload: dict = Body(...)):
             "titulo": f"Pesquisa: '{termo}'",
             "detalhe": f"Nenhum resultado direto encontrado para '{termo}'."
         })
+
+    print(f"Total de resultados encontrados: {len(resultados)}")
 
     return {
         "status": "sucesso",
