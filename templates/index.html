@@ -2,205 +2,163 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sandbrain Mobile</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandbrain - Assistente Virtual</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background-color: #0d1117; color: #c9d1d9; padding: 16px; display: flex; flex-direction: column; align-items: center; }
-        .app-card { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
-        h1 { color: #00ff41; font-size: 24px; text-align: center; font-weight: 700; margin-bottom: 4px; }
-        p.subtitle { text-align: center; font-size: 13px; color: #8b949e; margin-bottom: 8px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: #0d1117; color: #c9d1d9; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
         
-        .search-row { display: flex; gap: 8px; width: 100%; }
-        input[type="text"] { 
-            flex: 1; 
-            padding: 14px; 
-            border-radius: 8px; 
-            border: 1px solid #30363d; 
-            background: #161b22; 
-            color: #f0f6fc; 
-            font-size: 16px; 
-            outline: none;
-        }
-        input[type="text"]:focus { border-color: #00ff41; }
-        
-        button { 
-            padding: 14px; 
-            border: none; 
-            border-radius: 8px; 
-            font-weight: bold; 
-            font-size: 16px; 
-            cursor: pointer; 
-            display: flex; 
-            align-items: center; 
+        /* Container Principal */
+        .app-container { width: 100%; max-width: 600px; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+
+        /* Campo de Pesquisa */
+        .search-box { width: 100%; display: flex; gap: 10px; z-index: 10; }
+        input[type="text"] { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #30363d; background: #161b22; color: #fff; font-size: 16px; outline: none; }
+        button { padding: 12px 18px; border-radius: 8px; border: none; background: #238636; color: #fff; font-weight: bold; cursor: pointer; }
+        button:hover { background: #2ea043; }
+
+        /* Face Digital Cyberpunk (Abaixo da Busca) */
+        .avatar-container {
+            position: relative;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0,212,255,0.15) 0%, rgba(13,17,23,1) 70%);
+            display: flex;
             justify-content: center;
-        }
-        .btn-submit { background: #00ff41; color: #000; padding-left: 20px; padding-right: 20px; }
-        .btn-mic { background: #21262d; color: #00ff41; border: 1px solid #30363d; font-size: 18px; width: 50px; }
-        .btn-mic.active { background: #da3633 !important; color: #ffffff !important; border-color: #f85149 !important; animation: pulse 1s infinite; }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.6; }
-            100% { opacity: 1; }
+            align-items: center;
+            border: 2px solid #00d4ff;
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+            transition: all 0.3s ease;
         }
 
-        .status-msg { font-size: 12px; color: #8b949e; height: 16px; text-align: left; }
-        .results-box { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
-        .result-item { background: #161b22; padding: 14px; border-radius: 8px; border-left: 4px solid #00ff41; border-top: 1px solid #30363d; border-right: 1px solid #30363d; border-bottom: 1px solid #30363d; }
-        .result-item h3 { font-size: 15px; color: #f0f6fc; margin-bottom: 4px; }
-        .result-item p { font-size: 13px; color: #8b949e; }
+        /* Efeito de Pulso ao Falar */
+        .avatar-container.speaking {
+            animation: pulse-glow 0.6s infinite alternate;
+            border-color: #00ffaa;
+        }
+
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 10px #00d4ff, inset 0 0 10px #00d4ff; transform: scale(1); }
+            100% { box-shadow: 0 0 30px #00ffaa, inset 0 0 20px #00ffaa; transform: scale(1.05); }
+        }
+
+        .avatar-img {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+            filter: drop-shadow(0 0 8px #00d4ff);
+        }
+
+        /* Área de Resultados */
+        .results-box { width: 100%; margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+        .card { background: #161b22; border: 1px solid #30363d; padding: 15px; border-radius: 8px; }
+        .card h3 { color: #58a6ff; margin-bottom: 8px; font-size: 18px; }
+        .card p { color: #8b949e; line-height: 1.4; }
     </style>
 </head>
 <body>
-    <div class="app-card">
-        <div>
-            <h1>🧠 Sandbrain</h1>
-            <p class="subtitle">Pesquisa operacional por escrita e voz</p>
-        </div>
-        
-        <div class="search-row">
-            <input type="text" id="campoPesquisa" placeholder="Digite ou fale..." autocomplete="off" />
-            <button id="btnVoz" class="btn-mic" title="Pesquisar por voz">🎙️</button>
-            <button id="btnPesquisar" class="btn-submit">OK</button>
-        </div>
 
-        <div id="statusVoz" class="status-msg"></div>
-        <div id="areaResultados" class="results-box"></div>
+<div class="app-container">
+    <h1 style="color: #58a6ff; font-size: 24px;">Sandbrain AI</h1>
+
+    <!-- Campo de Pesquisa -->
+    <div class="search-box">
+        <input type="text" id="termoInput" placeholder="Digite sua pesquisa..." onkeypress="if(event.key==='Enter') realizarPesquisa()">
+        <button onclick="realizarPesquisa()">Buscar</button>
     </div>
 
-    <script>
-        const campoInput = document.getElementById('campoPesquisa');
-        const btnVoz = document.getElementById('btnVoz');
-        const btnPesquisar = document.getElementById('btnPesquisar');
-        const areaResultados = document.getElementById('areaResultados');
-        const statusVoz = document.getElementById('statusVoz');
+    <!-- Face Digital (Sempre Abaixo do Campo de Busca) -->
+    <div class="avatar-container" id="avatarBox">
+        <!-- SVG representando a Malha 3D Cyberpunk -->
+        <svg class="avatar-img" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M50 15 C30 15 20 35 20 60 C20 80 35 90 50 90 C65 90 80 80 80 60 C80 35 70 15 50 15 Z" stroke="#00d4ff" stroke-width="1.5" fill="none"/>
+            <path d="M30 45 L45 48 L30 50 Z M70 45 L55 48 L70 50 Z" stroke="#00d4ff" stroke-width="1.5"/>
+            <path d="M50 48 L50 65 L45 68 H55" stroke="#00d4ff" stroke-width="1.5"/>
+            <path d="M40 78 Q50 83 60 78" stroke="#00ffaa" stroke-width="2" id="avatarMouth"/>
+            <!-- Linhas de circuito da malha -->
+            <line x1="20" y1="40" x2="5" y2="40" stroke="#00d4ff" stroke-width="1"/>
+            <circle cx="5" cy="40" r="2" fill="#00d4ff"/>
+            <line x1="80" y1="40" x2="95" y2="40" stroke="#00d4ff" stroke-width="1"/>
+            <circle cx="95" cy="40" r="2" fill="#00d4ff"/>
+        </svg>
+    </div>
 
-        // Configuração de Reconhecimento de Voz (Entrada)
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    <!-- Área onde os Resultados Aparecem -->
+    <div class="results-box" id="resultadosArea"></div>
+</div>
 
-        if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'pt-BR';
-            recognition.continuous = false;
-            recognition.interimResults = false;
+<script>
+    function falarTexto(texto) {
+        if (!('speechSynthesis' in window)) return;
+        
+        window.speechSynthesis.cancel(); // Parar fala anterior
+        const utterance = new SpeechSynthesisUtterance(texto);
+        utterance.lang = 'pt-BR';
+        utterance.rate = 1.0;
 
-            btnVoz.addEventListener('click', () => {
-                pararVoz(); // Cancela falas anteriores se houver
-                try {
-                    recognition.start();
-                } catch (e) {
-                    recognition.stop();
-                }
+        const avatarBox = document.getElementById('avatarBox');
+
+        // Ativa animação da face digital ao iniciar a fala
+        utterance.onstart = () => {
+            avatarBox.classList.add('speaking');
+        };
+
+        // Remove a animação ao encerrar a fala
+        utterance.onend = () => {
+            avatarBox.classList.remove('speaking');
+        };
+
+        utterance.onerror = () => {
+            avatarBox.classList.remove('speaking');
+        };
+
+        window.speechSynthesis.speak(utterance);
+    }
+
+    async function realizarPesquisa() {
+        const input = document.getElementById('termoInput');
+        const resultadosArea = document.getElementById('resultadosArea');
+        const termo = input.value.trim();
+
+        if (!termo) return;
+
+        resultadosArea.innerHTML = '<div class="card"><p>Buscando informações...</p></div>';
+
+        try {
+            const response = await fetch('/api/pesquisar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ termo: termo })
             });
 
-            recognition.onstart = () => {
-                btnVoz.classList.add('active');
-                statusVoz.innerText = "Ouvindo... Pode falar.";
-            };
+            const data = await response.json();
+            resultadosArea.innerHTML = '';
 
-            recognition.onresult = (e) => {
-                const textoTranscrevido = e.results[0][0].transcript;
-                campoInput.value = textoTranscrevido;
-                statusVoz.innerText = "";
-                executarPesquisa(textoTranscrevido);
-            };
+            if (data.resultados && data.resultados.length > 0) {
+                let textoParaFalar = "";
 
-            recognition.onerror = (e) => {
-                btnVoz.classList.remove('active');
-                statusVoz.innerText = "Erro ao capturar voz: " + e.error;
-            };
+                data.resultados.forEach((res, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `<h3>${res.titulo}</h3><p>${res.detalhe}</p>`;
+                    resultadosArea.appendChild(card);
 
-            recognition.onend = () => {
-                btnVoz.classList.remove('active');
-                if (statusVoz.innerText === "Ouvindo... Pode falar.") {
-                    statusVoz.innerText = "";
-                }
-            };
-        } else {
-            btnVoz.style.display = 'none';
-            statusVoz.innerText = "Navegador sem suporte à Web Speech API.";
-        }
-
-        btnPesquisar.addEventListener('click', () => {
-            pararVoz();
-            executarPesquisa(campoInput.value);
-        });
-
-        campoInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                pararVoz();
-                executarPesquisa(campoInput.value);
-            }
-        });
-
-        // Função de Fala (Saída por Áudio)
-        function falarTexto(texto) {
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel(); // Cancela áudios anteriores pendentes
-                const utterance = new SpeechSynthesisUtterance(texto);
-                utterance.lang = 'pt-BR';
-                utterance.rate = 1.0;  // Velocidade da fala
-                utterance.pitch = 1.0; // Tom da voz
-                window.speechSynthesis.speak(utterance);
-            }
-        }
-
-        function pararVoz() {
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-            }
-        }
-
-        // Requisição para a API do Sandbrain
-        async function executarPesquisa(termo) {
-            if (!termo.trim()) return;
-
-            areaResultados.innerHTML = `<p style="color:#8b949e; font-size:14px;">Buscando dados para <b>"${termo}"</b>...</p>`;
-
-            try {
-                const response = await fetch('/api/pesquisar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ termo: termo })
+                    if (index === 0) textoParaFalar = res.detalhe;
                 });
 
-                const data = await response.json();
-
-                if (data.status === 'sucesso' && data.resultados.length > 0) {
-                    let html = '';
-                    let textoParaFalar = '';
-
-                    data.resultados.forEach((item, index) => {
-                        html += `
-                            <div class="result-item">
-                                <h3>${item.titulo}</h3>
-                                <p>${item.detalhe}</p>
-                            </div>
-                        `;
-                        // Monta o texto que o assistente vai sintetizar em áudio (lê o primeiro/principal resultado)
-                        if (index === 0) {
-                            textoParaFalar = `${item.titulo}. ${item.detalhe}`;
-                        }
-                    });
-
-                    areaResultados.innerHTML = html;
-
-                    // Executa a resposta falada
-                    if (textoParaFalar) {
-                        falarTexto(textoParaFalar);
-                    }
-                } else {
-                    const msgErro = `Nenhum registro encontrado para ${termo}.`;
-                    areaResultados.innerHTML = `<p style="color:#da3633; font-size:14px;">${msgErro}</p>`;
-                    falarTexto(msgErro);
-                }
-            } catch (err) {
-                const msgFalha = "Erro de conexão com o servidor do Sandbrain.";
-                areaResultados.innerHTML = `<p style="color:#da3633; font-size:14px;">${msgFalha}</p>`;
-                falarTexto(msgFalha);
+                // Sandbrain fala o primeiro resultado da pesquisa
+                falarTexto(textoParaFalar);
+            } else {
+                resultadosArea.innerHTML = '<div class="card"><p>Nenhum resultado encontrado.</p></div>';
+                falarTexto("Nenhum resultado direto encontrado.");
             }
+        } catch (error) {
+            resultadosArea.innerHTML = '<div class="card"><p>Erro ao conectar ao servidor.</p></div>';
+            falarTexto("Erro ao conectar ao servidor.");
         }
-    </script>
+    }
+</script>
+
 </body>
 </html>
