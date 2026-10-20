@@ -83,7 +83,7 @@ async def pesquisar(payload: dict = Body(...)):
         except Exception as e:
             print(f"Erro no Dólar: {e}")
 
-    # 3. RESPOSTA VIA INTELIGÊNCIA ARTIFICIAL (Groq API - Llama 3.3 Versatile)
+    # 3. RESPOSTA VIA INTELIGÊNCIA ARTIFICIAL (Groq API - Llama 3.1 8B Instant)
     if len(resultados) == 0 and GROQ_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -92,7 +92,7 @@ async def pesquisar(payload: dict = Body(...)):
                     "Content-Type": "application/json"
                 }
                 groq_payload = {
-                    "model": "llama-3.3-70b-versatile",
+                    "model": "llama-3.1-8b-instant",
                     "messages": [
                         {
                             "role": "system", 
