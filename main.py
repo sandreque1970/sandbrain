@@ -3,7 +3,6 @@ import urllib.parse
 from pathlib import Path
 import uvicorn
 import httpx
-import xml.etree.ElementTree as ET
 from fastapi import FastAPI, Request, Body
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -12,7 +11,7 @@ app = FastAPI(title="Sandbrain Core API")
 BASE_DIR = Path(__file__).resolve().parent
 HTML_PATH = BASE_DIR / "templates" / "index.html"
 
-# Correção na leitura da chave API
+# Leitura segura da variável de ambiente configurada no Render
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 @app.get("/")
@@ -36,7 +35,7 @@ async def pesquisar(payload: dict = Body(...)):
         "User-Agent": "SandbrainApp/1.0 (https://github.com/sandreque1970/sandbrain; sandreque1970@gmail.com)"
     }
 
-    # 1. PREVISÃO DO TEMPO (Comandos Rápidos)
+    # 1. PREVISÃO DO TEMPO
     if any(k in termo_lower for k in ["tempo em", "clima em", "previsão em", "temperatura em"]):
         try:
             cidade = termo_lower
@@ -84,12 +83,12 @@ async def pesquisar(payload: dict = Body(...)):
         except Exception as e:
             print(f"Erro no Dólar: {e}")
 
-    # 3. RESPOSTA VIA INTELIGÊNCIA ARTIFICIAL (Groq API - Llama 3)
+    # 3. RESPOSTA VIA INTELIGÊNCIA ARTIFICIAL (Groq API)
     if len(resultados) == 0 and GROQ_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 groq_headers = {
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
                     "Content-Type": "application/json"
                 }
                 groq_payload = {
@@ -114,14 +113,20 @@ async def pesquisar(payload: dict = Body(...)):
                         "titulo": f"🤖 Sandbrain AI",
                         "detalhe": resposta_texto
                     })
+                else:
+                    print(f"Erro resposta Groq: {res_ia.text}")
         except Exception as e:
             print(f"Erro na IA Groq: {e}")
 
-    # 4. FALLBACK CASO A CHAVE NÃO ESTEJA CONFIGURADA OU A IA FALHE
+    # 4. FALLBACK CASO NÃO HOUVER CHAVE OU A IA FALHAR
     if len(resultados) == 0:
+        detalhe_msg = f"Nenhum resultado direto encontrado para '{termo}'."
+        if not GROQ_API_KEY:
+            detalhe_msg += " A variável GROQ_API_KEY não foi detectada pelo servidor."
+            
         resultados.append({
             "titulo": f"Pesquisa: '{termo}'",
-            "detalhe": f"Nenhum resultado direto encontrado para '{termo}'. Verifique se a chave GROQ_API_KEY está configurada no main.py."
+            "detalhe": detalhe_msg
         })
 
     print(f"Total de resultados encontrados: {len(resultados)}")
