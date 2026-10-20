@@ -11,7 +11,7 @@ app = FastAPI(title="Sandbrain Core API")
 BASE_DIR = Path(__file__).resolve().parent
 HTML_PATH = BASE_DIR / "templates" / "index.html"
 
-# Leitura segura da variável de ambiente configurada no Render
+# Leitura da chave de API registrada no painel do Render
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 @app.get("/")
@@ -91,18 +91,18 @@ async def pesquisar(payload: dict = Body(...)):
                     "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
                     "Content-Type": "application/json"
                 }
-               groq_payload = {
-    "model": "llama3-70b-8192",
-    "messages": [
-        {
-            "role": "system", 
-            "content": "Você é o Sandbrain, um assistente virtual inteligente e prestativo. Responda em português de forma clara, direta e objetiva (máximo 3 a 4 frases), ideal para leitura por síntese de voz."
-        },
-        {"role": "user", "content": termo}
-    ],
-    "temperature": 0.7,
-    "max_tokens": 250
-}
+                groq_payload = {
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [
+                        {
+                            "role": "system", 
+                            "content": "Você é o Sandbrain, um assistente virtual inteligente e prestativo. Responda em português de forma clara, direta e objetiva (máximo 3 a 4 frases), ideal para leitura por síntese de voz."
+                        },
+                        {"role": "user", "content": termo}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 250
+                }
                 
                 res_ia = await client.post("https://api.groq.com/openai/v1/chat/completions", json=groq_payload, headers=groq_headers)
                 print(f"Status Groq API: {res_ia.status_code}")
@@ -110,7 +110,7 @@ async def pesquisar(payload: dict = Body(...)):
                 if res_ia.status_code == 200:
                     resposta_texto = res_ia.json()["choices"][0]["message"]["content"]
                     resultados.append({
-                        "titulo": f"🤖 Sandbrain AI",
+                        "titulo": "🤖 Sandbrain AI",
                         "detalhe": resposta_texto
                     })
                 else:
@@ -118,7 +118,7 @@ async def pesquisar(payload: dict = Body(...)):
         except Exception as e:
             print(f"Erro na IA Groq: {e}")
 
-    # 4. FALLBACK CASO NÃO HOUVER CHAVE OU A IA FALHAR
+    # 4. FALLBACK
     if len(resultados) == 0:
         detalhe_msg = f"Nenhum resultado direto encontrado para '{termo}'."
         if not GROQ_API_KEY:
