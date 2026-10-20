@@ -91,18 +91,18 @@ async def pesquisar(payload: dict = Body(...)):
                     "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
                     "Content-Type": "application/json"
                 }
-               groq_payload = {
-    "model": "llama3-8b-8192",
-    "messages": [
-        {
-            "role": "system", 
-            "content": "Você é o Sandbrain, um assistente virtual inteligente e prestativo. Responda em português de forma clara, direta e objetiva (máximo 3 frases)."
-        },
-        {"role": "user", "content": termo}
-    ],
-    "temperature": 0.7,
-    "max_tokens": 250
-}
+                groq_payload = {
+                    "model": "llama3-8b-8192",
+                    "messages": [
+                        {
+                            "role": "system", 
+                            "content": "Você é o Sandbrain, um assistente virtual inteligente e prestativo. Responda em português de forma clara, direta e objetiva (máximo 3 frases)."
+                        },
+                        {"role": "user", "content": termo}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 250
+                }
                 
                 res_ia = await client.post("https://api.groq.com/openai/v1/chat/completions", json=groq_payload, headers=groq_headers)
                 print(f"Status Groq API: {res_ia.status_code}")
