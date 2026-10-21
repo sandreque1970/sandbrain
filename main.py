@@ -3,16 +3,14 @@ import urllib.parse
 from pathlib import Path
 import uvicorn
 import httpx
-from fastapi import FastAPI, Request, Body
+import xml.etree.ElementTree as ET
+from fastapi import FastAPI, Body
 from fastapi.responses import FileResponse, JSONResponse
 
 app = FastAPI(title="Sandbrain Core API")
 
 BASE_DIR = Path(__file__).resolve().parent
 HTML_PATH = BASE_DIR / "templates" / "index.html"
-
-# Leitura da chave de API registrada no painel do Render
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 @app.get("/")
 async def home():
@@ -23,7 +21,7 @@ async def home():
 @app.post("/api/pesquisar")
 async def pesquisar(payload: dict = Body(...)):
     termo = payload.get("termo", "").strip()
-    print(f"=== NOVA PESQUISA RECEBIDA: {termo} ===")
+    print(f"=== PESQUISA RECEBIDA: {termo} ===")
     
     if not termo:
         return JSONResponse(status_code=400, content={"status": "erro", "mensagem": "Termo de pesquisa vazio."})
@@ -31,21 +29,21 @@ async def pesquisar(payload: dict = Body(...)):
     resultados = []
     termo_lower = termo.lower()
     
-    headers_padrao = {
-        "User-Agent": "SandbrainApp/1.0 (https://github.com/sandreque1970/sandbrain; sandreque1970@gmail.com)"
+    headers = {
+        "User-Agent": "SandbrainApp/1.0 (https://github.com/sandreque1970/sandbrain)"
     }
 
     # 1. PREVISÃO DO TEMPO
-    if any(k in termo_lower for k in ["tempo em", "clima em", "previsão em", "temperatura em"]):
+    if any(k in termo_lower for k in ["tempo em", "clima em", "previsão em", "temperatura em", "tempo", "clima"]):
         try:
             cidade = termo_lower
-            for p in ["tempo em", "clima em", "previsão em", "temperatura em"]:
+            for p in ["tempo em", "clima em", "previsão em", "temperatura em", "tempo", "clima"]:
                 cidade = cidade.replace(p, "").strip()
             
             if not cidade:
                 cidade = "São Paulo"
 
-            async with httpx.AsyncClient(timeout=6.0, headers=headers_padrao) as client:
+            async with httpx.AsyncClient(timeout=6.0, headers=headers) as client:
                 geo_url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(cidade)}&format=json&limit=1"
                 geo_res = await client.get(geo_url)
                 
@@ -64,72 +62,77 @@ async def pesquisar(payload: dict = Body(...)):
                         
                         resultados.append({
                             "titulo": f"🌤️ Previsão do Tempo: {nome_cidade}",
-                            "detalhe": f"A temperatura atual em {nome_cidade} é de {temp}°C, com vento de {vento} km/h."
+                            "detalhe": f"A temperatura atual em {nome_cidade} é de {temp}°C, com velocidade do vento de {vento} km/h."
                         })
         except Exception as e:
-            print(f"Erro ao buscar previsão do tempo: {e}")
+            print(f"Erro Clima: {e}")
 
     # 2. COTAÇÃO DO DÓLAR
-    elif "dolar" in termo_lower or "dólar" in termo_lower:
+    if "dolar" in termo_lower or "dólar" in termo_lower:
         try:
-            async with httpx.AsyncClient(timeout=5.0, headers=headers_padrao) as client:
+            async with httpx.AsyncClient(timeout=5.0, headers=headers) as client:
                 res = await client.get("https://economia.awesomeapi.com.br/last/USD-BRL")
                 if res.status_code == 200:
                     dados = res.json().get("USDBRL", {})
                     resultados.append({
                         "titulo": "💵 Cotação Comercial do Dólar",
-                        "detalhe": f"O Dólar está cotado a R$ {dados.get('bid', 'N/A')}. Máxima do dia: R$ {dados.get('high', 'N/A')} e Mínima: R$ {dados.get('low', 'N/A')}."
+                        "detalhe": f"Valor Atual: R$ {dados.get('bid', 'N/A')} | Máxima: R$ {dados.get('high', 'N/A')} | Mínima: R$ {dados.get('low', 'N/A')}"
                     })
         except Exception as e:
-            print(f"Erro no Dólar: {e}")
+            print(f"Erro Dólar: {e}")
 
-    # 3. RESPOSTA VIA INTELIGÊNCIA ARTIFICIAL (Groq API - Llama 3.1 8B Instant)
-    if len(resultados) == 0 and GROQ_API_KEY:
+    # 3. NOTÍCIAS
+    if "noticia" in termo_lower or "notícia" in termo_lower or "manchete" in termo_lower:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                groq_headers = {
-                    "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
-                    "Content-Type": "application/json"
-                }
-                groq_payload = {
-                    "model": "llama-3.1-8b-instant",
-                    "messages": [
-                        {
-                            "role": "system", 
-                            "content": "Você é o Sandbrain, um assistente virtual inteligente e prestativo. Responda em português de forma clara, direta e objetiva (máximo 3 frases)."
-                        },
-                        {"role": "user", "content": termo}
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 250
-                }
-                
-                res_ia = await client.post("https://api.groq.com/openai/v1/chat/completions", json=groq_payload, headers=groq_headers)
-                print(f"Status Groq API: {res_ia.status_code}")
-                
-                if res_ia.status_code == 200:
-                    resposta_texto = res_ia.json()["choices"][0]["message"]["content"]
-                    resultados.append({
-                        "titulo": "🤖 Sandbrain AI",
-                        "detalhe": resposta_texto
-                    })
-                else:
-                    print(f"Erro resposta Groq: {res_ia.text}")
-        except Exception as e:
-            print(f"Erro na IA Groq: {e}")
+            assunto = termo_lower
+            for p in ["noticias sobre", "notícias sobre", "noticia de", "notícias de", "noticias", "notícias", "manchetes"]:
+                assunto = assunto.replace(p, "").strip()
 
-    # 4. FALLBACK
-    if len(resultados) == 0:
-        detalhe_msg = f"Nenhum resultado direto encontrado para '{termo}'."
-        if not GROQ_API_KEY:
-            detalhe_msg += " A variável GROQ_API_KEY não foi detectada pelo servidor."
+            rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(assunto or 'Brasil')}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
             
+            async with httpx.AsyncClient(timeout=6.0, headers=headers, follow_redirects=True) as client:
+                res_news = await client.get(rss_url)
+                if res_news.status_code == 200:
+                    root = ET.fromstring(res_news.content)
+                    items = root.findall(".//item")[:3]
+                    
+                    if items:
+                        noticias_txt = [f"{idx}. {item.find('title').text}" for idx, item in enumerate(items, 1) if item.find('title') is not None]
+                        resultados.append({
+                            "titulo": f"📰 Principais Notícias: {assunto.capitalize() if assunto else 'Destaques'}",
+                            "detalhe": " | ".join(noticias_txt)
+                        })
+        except Exception as e:
+            print(f"Erro Notícias: {e}")
+
+    # 4. BUSCA WIKIPÉDIA (Geral/Conceitos)
+    if len(resultados) == 0:
+        termo_wiki = termo.capitalize()
+        termo_encoded = urllib.parse.quote(termo_wiki.replace(" ", "_"))
+        
+        try:
+            async with httpx.AsyncClient(timeout=6.0, headers=headers, follow_redirects=True) as client:
+                url_wiki = f"https://pt.wikipedia.org/api/rest_v1/page/summary/{termo_encoded}"
+                res_wiki = await client.get(url_wiki)
+                
+                if res_wiki.status_code == 200:
+                    dados_wiki = res_wiki.json()
+                    if dados_wiki.get("extract") and dados_wiki.get("type") != "disambiguation":
+                        resultados.append({
+                            "titulo": f"📖 Wikipédia: {dados_wiki.get('title', termo)}",
+                            "detalhe": dados_wiki.get("extract")
+                        })
+        except Exception as e:
+            print(f"Erro Wikipédia: {e}")
+
+    # 5. FALLBACK PADRÃO
+    if len(resultados) == 0:
         resultados.append({
             "titulo": f"Pesquisa: '{termo}'",
-            "detalhe": detalhe_msg
+            "detalhe": f"Nenhum resultado direto encontrado para '{termo}'."
         })
 
-    print(f"Total de resultados encontrados: {len(resultados)}")
+    print(f"Total de resultados retornados: {len(resultados)}")
 
     return {
         "status": "sucesso",
